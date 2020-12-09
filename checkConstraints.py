@@ -1,9 +1,11 @@
 import requests
 
-URL = 'https://www.wikidata.org/w/api.php?format=json&action=wbcheckconstraints'
+OUTPUT_DELIMITER = ';'
+STATEMENT_COUNT_URL = 'https://www.wikidata.org/w/api.php?action=query&prop=pageprops&ppprop=wb-claims&format=json'
+CONSTRAINT_CHECK_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wbcheckconstraints'
 q_id = 'Q64'
 
-r = requests.get(URL + '&id=' + q_id).json()
+r = requests.get(CONSTRAINT_CHECK_URL + '&id=' + q_id).json()
 
 # https://www.wikidata.org/w/api.php?format=json&id=Q78469&action=wbcheckconstraints
 
@@ -13,6 +15,15 @@ bad_paramteres = 0
 violations = 0
 
 violated_statements = 0
+
+def printHeader():
+    print(OUTPUT_DELIMITER.join(['QID','statements','violations','warnings','suggestions','violated_statements']))
+
+def countStatements(q_id):
+    statementCountResponse = requests.get(STATEMENT_COUNT_URL + '&titles=' + q_id).json()
+    pages = statementCountResponse['query']['pages']
+    firstPageId = next(iter(pages))
+    return pages[firstPageId]['pageprops']['wb-claims']
 
 def incrementCounter(status):
     global violations
@@ -29,6 +40,8 @@ def incrementCounter(status):
     elif status == 'bad-parameters':
         bad_paramteres+=1
 
+
+statementCount = countStatements(q_id)
 
 for (property_id, constraint_checks) in r['wbcheckconstraints'][q_id]['claims'].items():
         for constraint_check in constraint_checks:
@@ -55,4 +68,7 @@ for (property_id, constraint_checks) in r['wbcheckconstraints'][q_id]['claims'].
                                 # print("property_id, snak_property_id, status:", property_id, snak_property_id, reference_result['status'])
                                 incrementCounter(reference_result['status'])
 
-print ("violations, warnings, suggestions, bad_parameters: ", violations, warnings, suggestions, bad_paramteres)
+printHeader()
+
+# list of str-mapped int values, delimited by OUTPUT_DELIMITER
+print(OUTPUT_DELIMITER.join(map(str,[q_id, statementCount, violations, warnings, suggestions, violated_statements])))
