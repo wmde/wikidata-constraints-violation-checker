@@ -7,8 +7,8 @@ OUTPUT_DELIMITER = ';'
 STATEMENT_COUNT_URL = 'https://www.wikidata.org/w/api.php?action=query&prop=pageprops&ppprop=wb-claims&format=json'
 CONSTRAINT_CHECK_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wbcheckconstraints'
 
-# TODO
-violated_statements = 0
+VIOLATED_STATEMENTS = 0
+VIOLATION_FLAG = False
 
 def printHeader():
     print(OUTPUT_DELIMITER.join(['QID','statements','violations','warnings','suggestions','violated_statements']))
@@ -21,7 +21,7 @@ def printResults(q_id, statementCount, constraintChecks):
         constraintChecks['violations'],
         constraintChecks['warnings'],
         constraintChecks['suggestions'],
-        violated_statements]
+        VIOLATED_STATEMENTS]
     )))
 
 async def countStatements(q_id):
@@ -41,6 +41,8 @@ async def checkConstraints(q_id):
     }
 
     async with ClientSession() as session:
+        global VIOLATED_STATEMENTS
+        global VIOLATION_FLAG
         async with session.get(CONSTRAINT_CHECK_URL + '&id=' + q_id) as r:
             r = await r.read()
             parsed_response = json.loads(str(r, 'utf-8'))
@@ -51,6 +53,9 @@ async def checkConstraints(q_id):
                     for main_result in main_results:
                         # print("property_id, status:", property_id, main_result['status'])
                         counter = incrementCounter(main_result['status'], counter)
+                        if len(counter) != 0 and VIOLATION_FLAG == False:
+                            VIOLATED_STATEMENTS+=1
+                            VIOLATION_FLAG = True
                     if 'qualifiers' in constraint_check.keys():
                         qualifier_items = constraint_check['qualifiers'].items()
                         for (qualifier_property_id, qualifier_item) in qualifier_items:
@@ -69,6 +74,8 @@ async def checkConstraints(q_id):
                                     for reference_result in reference_results:
                                         # print("property_id, snak_property_id, status:", property_id, snak_property_id, reference_result['status'])
                                         counter = incrementCounter(reference_result['status'], counter)
+
+                        VIOLATION_FLAG = False
 
             return counter
 
