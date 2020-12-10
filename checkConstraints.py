@@ -7,29 +7,40 @@ OUTPUT_DELIMITER = ';'
 STATEMENT_COUNT_URL = 'https://www.wikidata.org/w/api.php?action=query&prop=pageprops&ppprop=wb-claims&format=json'
 CONSTRAINT_CHECK_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wbcheckconstraints'
 
+# TODO
+violated_statements = 0
+
 def printHeader():
-    print(OUTPUT_DELIMITER.join(['QID','statements','violations','warnings','suggestions','violated_statements']))
+    with open('data/out.csv', 'w') as f:
+        print(OUTPUT_DELIMITER.join(['QID','statements','violations','warnings','suggestions','violated_statements']), file=f)
 
 def printResults(q_id, statementCount, constraintChecks):
-    # list of str-mapped int values, delimited by OUTPUT_DELIMITER
-    print(OUTPUT_DELIMITER.join(map(str, [
-        q_id,
-        statementCount,
-        constraintChecks['violations'],
-        constraintChecks['warnings'],
-        constraintChecks['suggestions'],
-        constraintChecks['violated_statements']
-        ]
-    )))
+    with open('data/out.csv', 'a') as f:
+        # list of str-mapped int values, delimited by OUTPUT_DELIMITER
+        print(OUTPUT_DELIMITER.join(map(str, [
+            q_id,
+            statementCount,
+            constraintChecks['violations'],
+            constraintChecks['warnings'],
+            constraintChecks['suggestions'],
+            constraintChecks['violated_statements']
+            ]
+        )), file=f)
 
 async def countStatements(q_id):
+    # Returns the number of statements on the given entity, returns False if the
+    # entity does not exist or is a redirect.
     async with ClientSession() as session:
         async with session.get(STATEMENT_COUNT_URL + '&titles=' + q_id) as statementCountResponse:
             statementCountResponse = await statementCountResponse.read()
             r = json.loads(str(statementCountResponse, 'utf-8'))
             pages = r['query']['pages']
             firstPageId = next(iter(pages))
-            return pages[firstPageId]['pageprops']['wb-claims']
+            try:
+                statementCount = pages[firstPageId]['pageprops']['wb-claims']
+            except KeyError:
+                return False
+            return statementCount
 
 async def checkConstraints(q_id):
     counter = {
@@ -99,12 +110,22 @@ async def main():
     with open('data/input.csv', newline='') as inputFile:
         lines = list(csv.reader(inputFile))
 
-    for fields in lines:
+    for index, fields in enumerate(lines):
         q_id=fields[0]
+        print('.', end='', flush=True)
         statementCount = await countStatements(q_id)
+        print('\b-', end='', flush=True)
+        if statementCount is False:
+            print('\bx', end='', flush=True)
+            continue
         constraintChecks = await checkConstraints(q_id)
+        print('\b+', end='', flush=True)
         printResults(q_id, statementCount, constraintChecks)
 
+        if((index+1) % 10 == 0):
+            print('|', end='', flush=True)
+            if((index+1) % 100 == 0):
+                print('',index+1)
 
 loop=asyncio.get_event_loop()
 loop.run_until_complete(main())
