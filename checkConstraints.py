@@ -27,13 +27,19 @@ def printResults(q_id, statementCount, constraintChecks):
         )), file=f)
 
 async def countStatements(q_id):
+    # Returns the number of statements on the given entity, returns False if the
+    # entity does not exist or is a redirect.
     async with ClientSession() as session:
         async with session.get(STATEMENT_COUNT_URL + '&titles=' + q_id) as statementCountResponse:
             statementCountResponse = await statementCountResponse.read()
             r = json.loads(str(statementCountResponse, 'utf-8'))
             pages = r['query']['pages']
             firstPageId = next(iter(pages))
-            return pages[firstPageId]['pageprops']['wb-claims']
+            try:
+                statementCount = pages[firstPageId]['pageprops']['wb-claims']
+            except KeyError:
+                return False
+            return statementCount
 
 async def checkConstraints(q_id):
     counter = {
@@ -96,6 +102,9 @@ async def main():
         print('.', end='', flush=True)
         statementCount = await countStatements(q_id)
         print('\b-', end='', flush=True)
+        if statementCount is False:
+            print('\bx', end='', flush=True)
+            continue
         constraintChecks = await checkConstraints(q_id)
         print('\b+', end='', flush=True)
         printResults(q_id, statementCount, constraintChecks)
