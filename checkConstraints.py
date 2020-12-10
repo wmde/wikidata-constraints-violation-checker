@@ -11,18 +11,20 @@ CONSTRAINT_CHECK_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wb
 violated_statements = 0
 
 def printHeader():
-    print(OUTPUT_DELIMITER.join(['QID','statements','violations','warnings','suggestions','violated_statements']))
+    with open('data/out.csv', 'w') as f:
+        print(OUTPUT_DELIMITER.join(['QID','statements','violations','warnings','suggestions','violated_statements']), file=f)
 
 def printResults(q_id, statementCount, constraintChecks):
-    # list of str-mapped int values, delimited by OUTPUT_DELIMITER
-    print(OUTPUT_DELIMITER.join(map(str, [
-        q_id,
-        statementCount,
-        constraintChecks['violations'],
-        constraintChecks['warnings'],
-        constraintChecks['suggestions'],
-        violated_statements]
-    )))
+    with open('data/out.csv', 'a') as f:
+        # list of str-mapped int values, delimited by OUTPUT_DELIMITER
+        print(OUTPUT_DELIMITER.join(map(str, [
+            q_id,
+            statementCount,
+            constraintChecks['violations'],
+            constraintChecks['warnings'],
+            constraintChecks['suggestions'],
+            violated_statements]
+        )), file=f)
 
 async def countStatements(q_id):
     async with ClientSession() as session:
@@ -89,12 +91,19 @@ async def main():
     with open('data/input.csv', newline='') as inputFile:
         lines = list(csv.reader(inputFile))
 
-    for fields in lines:
+    for index, fields in enumerate(lines):
         q_id=fields[0]
+        print('.', end='', flush=True)
         statementCount = await countStatements(q_id)
+        print('\b-', end='', flush=True)
         constraintChecks = await checkConstraints(q_id)
+        print('\b+', end='', flush=True)
         printResults(q_id, statementCount, constraintChecks)
 
+        if((index+1) % 10 == 0):
+            print('|', end='', flush=True)
+            if((index+1) % 100 == 0):
+                print('',index+1)
 
 loop=asyncio.get_event_loop()
 loop.run_until_complete(main())
