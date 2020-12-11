@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 import sys
 import os
@@ -7,6 +7,8 @@ import asyncio
 from aiohttp import ClientSession
 import csv
 import json
+from datetime import datetime
+import random
 
 OUTPUT_DELIMITER = ';'
 STATEMENT_COUNT_URL = 'https://www.wikidata.org/w/api.php?action=query&prop=pageprops&ppprop=wb-claims&format=json'
@@ -70,7 +72,7 @@ async def checkConstraints(q_id):
 
             for (property_id, statement_group) in parsed_response['wbcheckconstraints'][q_id]['claims'].items():
                 for statement in statement_group:
-                    counter['statement_is_violated'] = False;
+                    counter['statement_is_violated'] = False
 
                     violated_mainsnaks = statement['mainsnak']['results']
                     for violated_mainsnak in violated_mainsnaks:
@@ -119,49 +121,80 @@ def incrementCounter(status, counter):
 async def main(argv):
     inputFileName = ''
     outputFileName = ''
+    numberOfItems = 0
+
     try:
-        opts, args = getopt.getopt(argv,"hi:o:",["help","ifile=","ofile="])
+        opts, args = getopt.getopt(argv,"hi:o:r:",["help","ifile=","ofile=","random="])
     except getopt.GetoptError:
-        print('checkConstraints.py -i <inputfile> [-o <outputfile>]')
+        print('checkConstraints.py -i <inputfile> | -r <number of items> [-o <outputfile>]')
         sys.exit(2)
     for opt, arg in opts:
         if opt in ("-h", "--help"):
-            print('checkConstraints.py -i <inputfile> [-o <outputfile>]')
+            print('checkConstraints.py -i <inputfile> | -r <number of items> [-o <outputfile>]')
             sys.exit()
         elif opt in ("-i", "--ifile"):
             inputFileName = arg
         elif opt in ("-o", "--ofile"):
             outputFileName = arg
+        elif opt in ("-r", "--random"):
+            numberOfItems = arg
 
-    if(not inputFileName):
-        print('checkConstraints.py -i <inputfile> [-o <outputfile>]')
+    #TODO: can be simplified with xor logic
+    if(not (inputFileName or numberOfItems) or (inputFileName and numberOfItems)):
+        print('checkConstraints.py -i <inputfile> | -r <number of items> [-o <outputfile>]')
         sys.exit(2)
 
+    if (not inputFileName and not outputFileName):
+        outputFileName = "data/random-" + datetime.now().strftime("%Y-%m-%d_%H:%M:%S") + ".out.csv"
     if(not outputFileName):
         name, extension = os.path.splitext(inputFileName)
         outputFileName = name + ".out" + extension
 
     printHeader(outputFileName)
 
-    with open(inputFileName, newline='') as inputFile:
-        lines = list(csv.reader(inputFile))
+    if numberOfItems == 0:
+        with open(inputFileName, newline='') as inputFile:
+            lines = list(csv.reader(inputFile))
 
-    for index, fields in enumerate(lines):
-        q_id=fields[0]
-        print('.', end='', flush=True)
-        statementCount = await countStatements(q_id)
-        print('\b-', end='', flush=True)
-        if statementCount is False:
-            print('\bx', end='', flush=True)
-            continue
-        constraintChecks = await checkConstraints(q_id)
-        print('\b+', end='', flush=True)
-        printResults(q_id, statementCount, constraintChecks, outputFileName)
+        for index, fields in enumerate(lines):
+            q_id=fields[0]
+            print('.', end='', flush=True)
+            statementCount = await countStatements(q_id)
+            print('\b-', end='', flush=True)
+            if statementCount is False:
+                print('\bx', end='', flush=True)
+                continue
+            constraintChecks = await checkConstraints(q_id)
+            print('\b+', end='', flush=True)
+            printResults(q_id, statementCount, constraintChecks, outputFileName)
 
-        if((index+1) % 10 == 0):
-            print('|', end='', flush=True)
-            if((index+1) % 100 == 0):
-                print('',index+1)
+            if((index+1) % 10 == 0):
+                print('|', end='', flush=True)
+                if((index+1) % 100 == 0):
+                    print('',index+1)
+    else:
+        index = 1
+        numberOfItems = int(numberOfItems)
+
+        while index <= numberOfItems:
+            q_id= "Q" + str(random.randint(1, 100000000))
+            print('.', end='', flush=True)
+            statementCount = await countStatements(q_id)
+            print('\b-', end='', flush=True)
+            if statementCount is False:
+                print('\bx', end='', flush=True)
+                continue
+            constraintChecks = await checkConstraints(q_id)
+            print('\b+', end='', flush=True)
+            printResults(q_id, statementCount, constraintChecks, outputFileName)
+
+            if((index+1) % 10 == 0):
+                print('|', end='', flush=True)
+                if((index+1) % 100 == 0):
+                    print('',index+1)
+
+            index+=1
+
     print()
 
 loop=asyncio.get_event_loop()
