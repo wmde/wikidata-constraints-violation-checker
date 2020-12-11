@@ -1,3 +1,8 @@
+#!/usr/bin/python
+
+import sys
+import os
+import getopt
 import asyncio
 from aiohttp import ClientSession
 import csv
@@ -10,12 +15,19 @@ CONSTRAINT_CHECK_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wb
 # TODO
 violated_statements = 0
 
-def printHeader():
-    with open('data/out.csv', 'w') as f:
-        print(OUTPUT_DELIMITER.join(['QID','statements','violations','warnings','suggestions','violated_statements']), file=f)
+def printHeader(outputFileName):
+    with open(outputFileName, 'w') as outputFile:
+        print(OUTPUT_DELIMITER.join([
+            'QID',
+            'statements',
+            'violations',
+            'warnings',
+            'suggestions',
+            'violated_statements'
+        ]), file=outputFile)
 
-def printResults(q_id, statementCount, constraintChecks):
-    with open('data/out.csv', 'a') as f:
+def printResults(q_id, statementCount, constraintChecks, outputFileName):
+    with open(outputFileName, 'a') as outputFile:
         # list of str-mapped int values, delimited by OUTPUT_DELIMITER
         print(OUTPUT_DELIMITER.join(map(str, [
             q_id,
@@ -25,7 +37,7 @@ def printResults(q_id, statementCount, constraintChecks):
             constraintChecks['suggestions'],
             constraintChecks['violated_statements']
             ]
-        )), file=f)
+        )), file=outputFile)
 
 async def countStatements(q_id):
     # Returns the number of statements on the given entity, returns False if the
@@ -104,10 +116,34 @@ def incrementCounter(status, counter):
 
     return counter
 
-async def main():
-    printHeader()
+async def main(argv):
+    inputFileName = ''
+    outputFileName = ''
+    try:
+        opts, args = getopt.getopt(argv,"hi:o:",["help","ifile=","ofile="])
+    except getopt.GetoptError:
+        print('checkConstraints.py -i <inputfile> [-o <outputfile>]')
+        sys.exit(2)
+    for opt, arg in opts:
+        if opt in ("-h", "--help"):
+            print('checkConstraints.py -i <inputfile> [-o <outputfile>]')
+            sys.exit()
+        elif opt in ("-i", "--ifile"):
+            inputFileName = arg
+        elif opt in ("-o", "--ofile"):
+            outputFileName = arg
 
-    with open('data/input.csv', newline='') as inputFile:
+    if(not inputFileName):
+        print('checkConstraints.py -i <inputfile> [-o <outputfile>]')
+        sys.exit(2)
+
+    if(not outputFileName):
+        name, extension = os.path.splitext(inputFileName)
+        outputFileName = name + ".out" + extension
+
+    printHeader(outputFileName)
+
+    with open(inputFileName, newline='') as inputFile:
         lines = list(csv.reader(inputFile))
 
     for index, fields in enumerate(lines):
@@ -120,7 +156,7 @@ async def main():
             continue
         constraintChecks = await checkConstraints(q_id)
         print('\b+', end='', flush=True)
-        printResults(q_id, statementCount, constraintChecks)
+        printResults(q_id, statementCount, constraintChecks, outputFileName)
 
         if((index+1) % 10 == 0):
             print('|', end='', flush=True)
@@ -128,4 +164,4 @@ async def main():
                 print('',index+1)
 
 loop=asyncio.get_event_loop()
-loop.run_until_complete(main())
+loop.run_until_complete(main(sys.argv[1:]))
