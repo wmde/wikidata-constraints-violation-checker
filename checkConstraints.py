@@ -162,6 +162,7 @@ async def main(argv):
             print('|', end='', flush=True)
             if((index+1) % 100 == 0):
                 print('',index+1)
+    print()
 
 loop=asyncio.get_event_loop()
 loop.run_until_complete(main(sys.argv[1:]))
