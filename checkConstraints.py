@@ -69,8 +69,12 @@ async def checkConstraints(q_id):
         async with session.get(CONSTRAINT_CHECK_URL + '&id=' + q_id) as r:
             r = await r.read()
             parsed_response = json.loads(str(r, 'utf-8'))
+            claims = parsed_response['wbcheckconstraints'][q_id]['claims']
+            # claims is a list (not a dict) if it's empty... yikes.
+            if not type(claims) is dict:
+                return counter
 
-            for (property_id, statement_group) in parsed_response['wbcheckconstraints'][q_id]['claims'].items():
+            for (property_id, statement_group) in claims.items():
                 for statement in statement_group:
                     counter['statement_is_violated'] = False
 
