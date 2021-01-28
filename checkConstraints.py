@@ -22,9 +22,9 @@ def printHeader(outputFileName):
         print(OUTPUT_DELIMITER.join([
             'QID',
             'statements',
-            'violations',
-            'warnings',
-            'suggestions',
+            'violations_mandatory_level',
+            'violations_normal_level',
+            'violations_suggestion_level',
             'violated_statements'
         ]), file=outputFile)
 
