@@ -11,8 +11,10 @@ from datetime import datetime
 import random
 
 OUTPUT_DELIMITER = ';'
-STATEMENT_COUNT_URL = 'https://www.wikidata.org/w/api.php?action=query&prop=pageprops&ppprop=wb-claims&format=json'
+STATEMENT_COUNT_URL = 'https://www.wikidata.org/w/api.php?format=json&action=query&prop=pageprops|revisions&ppprop=wb-claims&rvprop=ids'
 CONSTRAINT_CHECK_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wbcheckconstraints'
+SITELINK_COUNT_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wbgetentities&props=sitelinks'
+ORES_URL = 'https://ores.wikimedia.org/v3/scores/wikidatawiki/'
 
 # TODO
 violated_statements = 0
@@ -25,19 +27,25 @@ def printHeader(outputFileName):
             'violations_mandatory_level',
             'violations_normal_level',
             'violations_suggestion_level',
-            'violated_statements'
+            'violated_statements',
+            'total_sitelinks',
+            'wikipedia_sitelinks',
+            'ores_score',
         ]), file=outputFile)
 
-def printResults(q_id, statementCount, constraintChecks, outputFileName):
+def printResults(q_id, statementsAndRevid, sitelinksCounter, constraintChecks, oresScore, outputFileName):
     with open(outputFileName, 'a') as outputFile:
         # list of str-mapped int values, delimited by OUTPUT_DELIMITER
         print(OUTPUT_DELIMITER.join(map(str, [
             q_id,
-            statementCount,
+            statementsAndRevid['statements'],
             constraintChecks['violations'],
             constraintChecks['warnings'],
             constraintChecks['suggestions'],
-            constraintChecks['violated_statements']
+            constraintChecks['violated_statements'],
+            sitelinksCounter['total'],
+            sitelinksCounter['wikipedia'],
+            oresScore
             ]
         )), file=outputFile)
 
@@ -52,9 +60,36 @@ async def countStatements(q_id):
             firstPageId = next(iter(pages))
             try:
                 statementCount = pages[firstPageId]['pageprops']['wb-claims']
+                revid = pages[firstPageId]['revisions'][0]['revid']
             except KeyError:
                 return False
-            return statementCount
+            return {"statements": statementCount, "revid": revid}
+
+async def countSitelinks(q_id):
+    # Returns an array with the number of sitelinks to wikipedia and other projects
+    async with ClientSession() as session:
+        async with session.get(SITELINK_COUNT_URL + '&ids=' + q_id) as sitelinksResponse:
+            sitelinksResponse = await sitelinksResponse.read()
+            r = json.loads(str(sitelinksResponse, 'utf-8'))
+            if(not 'entities' in r):
+                return False
+            item = next(iter(r['entities'].values()))
+            total_sitelinks = item['sitelinks']
+            wikipedia_sitelinks = {k: v for k, v in total_sitelinks.items() if k.endswith('wiki')}
+            if('commonswiki' in wikipedia_sitelinks):
+                # remove commonswiki
+                del wikipedia_sitelinks['commonswiki']
+            return {"total": len(total_sitelinks), "wikipedia": len(wikipedia_sitelinks)}
+
+async def getOresScore(revid):
+    # Returns an array with the number of sitelinks to wikipedia and other projects
+    async with ClientSession() as session:
+        async with session.get(ORES_URL + str(revid)) as oresResponse:
+            oresResponse = await oresResponse.read()
+            r = json.loads(str(oresResponse, 'utf-8'))
+            scores = next(iter(r['wikidatawiki']['scores'].values()))
+            return scores['itemquality']['score']['prediction']
+
 
 async def checkConstraints(q_id):
     counter = {
@@ -175,17 +210,22 @@ async def main(argv):
 
             q_id=fields[0]
             print('.', end='', flush=True)
-            statementCount = await countStatements(q_id)
+            statementsAndRevid = await countStatements(q_id)
             print('\b-', end='', flush=True)
-            if statementCount is False:
+            if statementsAndRevid is False:
                 print('\bx', end='', flush=True)
+                continue
+            sitelinksCounter = await countSitelinks(q_id)
+            print('\b/', end='', flush=True)
+            if sitelinksCounter is False:
+                print('\bX', end='', flush=True)
                 continue
             constraintChecks = await checkConstraints(q_id)
             if constraintChecks is False:
                 print('\bX', end='', flush=True)
                 continue
             print('\b+', end='', flush=True)
-            printResults(q_id, statementCount, constraintChecks, outputFileName)
+            printResults(q_id, statementsAndRevid, sitelinksCounter, constraintChecks, outputFileName)
 
     else:
         index = 1
@@ -194,14 +234,20 @@ async def main(argv):
         while index <= numberOfItems:
             q_id= "Q" + str(random.randint(1, 100000000))
             print('.', end='', flush=True)
-            statementCount = await countStatements(q_id)
+            statementsAndRevid = await countStatements(q_id)
             print('\b-', end='', flush=True)
-            if statementCount is False:
+            if statementsAndRevid is False:
                 print('\bx', end='', flush=True)
+                continue
+            oresScore = await getOresScore(statementsAndRevid['revid'])
+            sitelinksCounter = await countSitelinks(q_id)
+            print('\b/', end='', flush=True)
+            if sitelinksCounter is False:
+                print('\bX', end='', flush=True)
                 continue
             constraintChecks = await checkConstraints(q_id)
             print('\b+', end='', flush=True)
-            printResults(q_id, statementCount, constraintChecks, outputFileName)
+            printResults(q_id, statementsAndRevid, sitelinksCounter, constraintChecks, oresScore, outputFileName)
 
             if((index+1) % 10 == 0):
                 print('|', end='', flush=True)
