@@ -66,42 +66,49 @@ async def checkConstraints(q_id):
     }
 
     async with ClientSession() as session:
-        async with session.get(CONSTRAINT_CHECK_URL + '&id=' + q_id) as r:
-            r = await r.read()
-            parsed_response = json.loads(str(r, 'utf-8'))
-            claims = parsed_response['wbcheckconstraints'][q_id]['claims']
-            # claims is a list (not a dict) if it's empty... yikes.
-            if not type(claims) is dict:
+        try:
+            async with session.get(CONSTRAINT_CHECK_URL + '&id=' + q_id) as r:
+                if r.status != 200:
+                    return False
+                r = await r.read()
+                parsed_response = json.loads(str(r, 'utf-8'))
+                if('error' in parsed_response):
+                    return False
+                claims = parsed_response['wbcheckconstraints'][q_id]['claims']
+                # claims is a list (not a dict) if it's empty... yikes.
+                if not type(claims) is dict:
+                    return counter
+
+                for (property_id, statement_group) in claims.items():
+                    for statement in statement_group:
+                        counter['statement_is_violated'] = False
+
+                        violated_mainsnaks = statement['mainsnak']['results']
+                        for violated_mainsnak in violated_mainsnaks:
+                            # print("property_id, status:", property_id, main_result['status'])
+                            counter = incrementCounter(violated_mainsnak['status'], counter)
+
+                        if 'qualifiers' in statement.keys():
+                            qualifier_items = statement['qualifiers'].items()
+                            for (qualifier_property_id, qualifier_item) in qualifier_items:
+                                for qualifier_constraint_check in qualifier_item:
+                                    qualifier_results = qualifier_constraint_check['results']
+                                    for qualifier_result in qualifier_results:
+                                        # print("property_id, qualifier_property_id, status:", property_id, qualifier_property_id, qualifier_result['status'])
+                                        counter = incrementCounter(qualifier_result['status'], counter)
+
+                        if 'references' in statement.keys():
+                            reference_items = statement['references']
+                            for reference_item in reference_items:
+                                for (snak_property_id, reference_constraint_checks) in reference_item['snaks'].items():
+                                    for reference_constraint_check in reference_constraint_checks:
+                                        reference_results = reference_constraint_check['results']
+                                        for reference_result in reference_results:
+                                            # print("property_id, snak_property_id, status:", property_id, snak_property_id, reference_result['status'])
+                                            counter = incrementCounter(reference_result['status'], counter)
                 return counter
-
-            for (property_id, statement_group) in claims.items():
-                for statement in statement_group:
-                    counter['statement_is_violated'] = False
-
-                    violated_mainsnaks = statement['mainsnak']['results']
-                    for violated_mainsnak in violated_mainsnaks:
-                        # print("property_id, status:", property_id, main_result['status'])
-                        counter = incrementCounter(violated_mainsnak['status'], counter)
-
-                    if 'qualifiers' in statement.keys():
-                        qualifier_items = statement['qualifiers'].items()
-                        for (qualifier_property_id, qualifier_item) in qualifier_items:
-                            for qualifier_constraint_check in qualifier_item:
-                                qualifier_results = qualifier_constraint_check['results']
-                                for qualifier_result in qualifier_results:
-                                    # print("property_id, qualifier_property_id, status:", property_id, qualifier_property_id, qualifier_result['status'])
-                                    counter = incrementCounter(qualifier_result['status'], counter)
-
-                    if 'references' in statement.keys():
-                        reference_items = statement['references']
-                        for reference_item in reference_items:
-                            for (snak_property_id, reference_constraint_checks) in reference_item['snaks'].items():
-                                for reference_constraint_check in reference_constraint_checks:
-                                    reference_results = reference_constraint_check['results']
-                                    for reference_result in reference_results:
-                                        # print("property_id, snak_property_id, status:", property_id, snak_property_id, reference_result['status'])
-                                        counter = incrementCounter(reference_result['status'], counter)
-            return counter
+        except asyncio.exceptions.TimeoutError:
+            return False
 
 
 def incrementCounter(status, counter):
@@ -161,6 +168,11 @@ async def main(argv):
             lines = list(csv.reader(inputFile))
 
         for index, fields in enumerate(lines):
+            if((index+1) % 10 == 1):
+                print('|', end='', flush=True)
+                if((index+1) % 100 == 0):
+                    print('',index+1)
+
             q_id=fields[0]
             print('.', end='', flush=True)
             statementCount = await countStatements(q_id)
@@ -169,13 +181,12 @@ async def main(argv):
                 print('\bx', end='', flush=True)
                 continue
             constraintChecks = await checkConstraints(q_id)
+            if constraintChecks is False:
+                print('\bX', end='', flush=True)
+                continue
             print('\b+', end='', flush=True)
             printResults(q_id, statementCount, constraintChecks, outputFileName)
 
-            if((index+1) % 10 == 0):
-                print('|', end='', flush=True)
-                if((index+1) % 100 == 0):
-                    print('',index+1)
     else:
         index = 1
         numberOfItems = int(numberOfItems)
