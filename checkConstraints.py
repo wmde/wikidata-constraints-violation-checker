@@ -17,6 +17,39 @@ CONSTRAINT_CHECK_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wb
 # TODO
 violated_statements = 0
 
+def parseArguments(argv):
+    numberOfItems = False
+    outputFileName = ''
+    inputFileName = ''
+
+    try:
+        opts, args = getopt.getopt(argv,"hi:o:r:",["help","ifile=","ofile=","random="])
+    except getopt.GetoptError:
+        print('checkConstraints.py -i <inputfile> | -r <number of items> [-o <outputfile>]')
+        sys.exit(2)
+    for opt, arg in opts:
+        if opt in ("-h", "--help"):
+            print('checkConstraints.py -i <inputfile> | -r <number of items> [-o <outputfile>]')
+            sys.exit()
+        elif opt in ("-i", "--ifile"):
+            inputFileName = arg
+        elif opt in ("-o", "--ofile"):
+            outputFileName = arg
+        elif opt in ("-r", "--random"):
+            numberOfItems = arg
+
+    if(not (inputFileName or numberOfItems) or (inputFileName and numberOfItems)):
+        print('checkConstraints.py -i <inputfile> | -r <number of items> [-o <outputfile>]')
+        sys.exit(2)
+
+    if (not inputFileName and not outputFileName):
+        outputFileName = "./random-" + datetime.now().strftime("%Y-%m-%d_%H:%M:%S") + ".out.csv"
+    if(not outputFileName):
+        name, extension = os.path.splitext(inputFileName)
+        outputFileName = name + ".out" + extension
+
+    return numberOfItems, outputFileName, inputFileName
+
 def printHeader(outputFileName):
     with open(outputFileName, 'w') as outputFile:
         print(OUTPUT_DELIMITER.join([
@@ -123,36 +156,7 @@ def incrementCounter(status, counter):
     return counter
 
 async def main(argv):
-    inputFileName = ''
-    outputFileName = ''
-    numberOfItems = 0
-
-    try:
-        opts, args = getopt.getopt(argv,"hi:o:r:",["help","ifile=","ofile=","random="])
-    except getopt.GetoptError:
-        print('checkConstraints.py -i <inputfile> | -r <number of items> [-o <outputfile>]')
-        sys.exit(2)
-    for opt, arg in opts:
-        if opt in ("-h", "--help"):
-            print('checkConstraints.py -i <inputfile> | -r <number of items> [-o <outputfile>]')
-            sys.exit()
-        elif opt in ("-i", "--ifile"):
-            inputFileName = arg
-        elif opt in ("-o", "--ofile"):
-            outputFileName = arg
-        elif opt in ("-r", "--random"):
-            numberOfItems = arg
-
-    #TODO: can be simplified with xor logic
-    if(not (inputFileName or numberOfItems) or (inputFileName and numberOfItems)):
-        print('checkConstraints.py -i <inputfile> | -r <number of items> [-o <outputfile>]')
-        sys.exit(2)
-
-    if (not inputFileName and not outputFileName):
-        outputFileName = "data/random-" + datetime.now().strftime("%Y-%m-%d_%H:%M:%S") + ".out.csv"
-    if(not outputFileName):
-        name, extension = os.path.splitext(inputFileName)
-        outputFileName = name + ".out" + extension
+    numberOfItems, outputFileName, inputFileName= parseArguments(argv)
 
     printHeader(outputFileName)
 
