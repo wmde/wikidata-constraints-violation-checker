@@ -50,6 +50,13 @@ def parseArguments(argv):
 
     return numberOfItems, outputFileName, inputFileName
 
+def readItemsFromFile(inputFileName):
+    with open(inputFileName, newline='') as inputFile:
+        return [row[0] for row in csv.reader(inputFile)]
+
+def generateRandomItemIds(numberOfItems):
+    return ['Q' + str(random.randint(1, 100000000)) for _ in range(numberOfItems)]
+
 def printHeader(outputFileName):
     with open(outputFileName, 'w') as outputFile:
         print(OUTPUT_DELIMITER.join([
@@ -155,53 +162,34 @@ def incrementCounter(status, counter):
 
     return counter
 
+async def checkQuality(items, outputFileName):
+    printHeader(outputFileName)
+
+    for index, q_id in enumerate(items):
+        print('.', end='', flush=True)
+        statementCount = await countStatements(q_id)
+        print('\b-', end='', flush=True)
+        if statementCount is False:
+            print('\bx', end='', flush=True)
+            continue
+        constraintChecks = await checkConstraints(q_id)
+        print('\b+', end='', flush=True)
+        printResults(q_id, statementCount, constraintChecks, outputFileName)
+
+        if((index+1) % 10 == 0):
+            print('|', end='', flush=True)
+            if((index+1) % 100 == 0):
+                print('',index+1)
+
 async def main(argv):
     numberOfItems, outputFileName, inputFileName= parseArguments(argv)
 
-    printHeader(outputFileName)
-
-    if numberOfItems == 0:
-        with open(inputFileName, newline='') as inputFile:
-            lines = list(csv.reader(inputFile))
-
-        for index, fields in enumerate(lines):
-            q_id=fields[0]
-            print('.', end='', flush=True)
-            statementCount = await countStatements(q_id)
-            print('\b-', end='', flush=True)
-            if statementCount is False:
-                print('\bx', end='', flush=True)
-                continue
-            constraintChecks = await checkConstraints(q_id)
-            print('\b+', end='', flush=True)
-            printResults(q_id, statementCount, constraintChecks, outputFileName)
-
-            if((index+1) % 10 == 0):
-                print('|', end='', flush=True)
-                if((index+1) % 100 == 0):
-                    print('',index+1)
+    if(numberOfItems):
+        items = generateRandomItemIds(int(numberOfItems))
     else:
-        index = 1
-        numberOfItems = int(numberOfItems)
+        items = readItemsFromFile(inputFileName)
 
-        while index <= numberOfItems:
-            q_id= "Q" + str(random.randint(1, 100000000))
-            print('.', end='', flush=True)
-            statementCount = await countStatements(q_id)
-            print('\b-', end='', flush=True)
-            if statementCount is False:
-                print('\bx', end='', flush=True)
-                continue
-            constraintChecks = await checkConstraints(q_id)
-            print('\b+', end='', flush=True)
-            printResults(q_id, statementCount, constraintChecks, outputFileName)
-
-            if((index+1) % 10 == 0):
-                print('|', end='', flush=True)
-                if((index+1) % 100 == 0):
-                    print('',index+1)
-
-            index+=1
+    await checkQuality(items, outputFileName)
 
     print()
 
