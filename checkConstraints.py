@@ -95,6 +95,29 @@ def logError(exception):
     with open('error.log', 'a') as outputFile:
         print("Exception:", exception, file=outputFile)
 
+def displayProgress(step, overwrite=True):
+    character = ''
+    if(step < 0):
+        #  ANSI escape sequence for 'ERROR' (red)
+        character = '\033[91m'
+        step *= -1
+
+    if(step == 0):
+        character += '.'
+    elif(step == 1):
+        character += '-'
+    elif(step == 2):
+        character += '+'
+    elif(step == 99):
+        character += '|'
+
+    if(overwrite):
+        character = '\b' + character
+
+    # turn off color
+    character += '\033[0m'
+
+    print(character, end='', flush=True)
 
 async def fetchNumberOfStatements(itemId):
     # Returns the number of statements on the given entity, returns False if the
@@ -158,7 +181,6 @@ async def checkConstraints(itemId):
                                         counter = incrementCounter(reference_result['status'], counter)
             return counter
 
-
 def incrementCounter(status, counter):
     # ignore
     if status == 'bad-parameters':
@@ -178,12 +200,12 @@ def incrementCounter(status, counter):
     return counter
 
 async def countStatements(itemId, results):
-    print('.', end='', flush=True)
+    displayProgress(0, False)
     try:
         results['statements'] = await fetchNumberOfStatements(itemId)
-        print('\b-', end='', flush=True)
+        displayProgress(1)
     except Exception as ex:
-        print('\bx', end='', flush=True)
+        displayProgress(-1)
         raise ex
 
     return results
@@ -195,9 +217,9 @@ async def checkConstraintViolations(itemId, results):
         results['violations_normal'] = constraintViolations['warnings']
         results['violations_suggestion'] = constraintViolations['suggestions']
         results['violated_statements'] = constraintViolations['violated_statements']
-        print('\b+', end='', flush=True)
+        displayProgress(2)
     except Exception as ex:
-        print('\bX', end='', flush=True)
+        displayProgress(-2)
         raise Exception(ex)
 
     return results
@@ -206,7 +228,6 @@ async def checkQuality(items, outputFileName):
     printHeader(outputFileName)
 
     for index, itemId in enumerate(items):
-
         itemResults = EMPTY_RESULTS
         try:
             itemResults = await countStatements(itemId, itemResults)
@@ -214,8 +235,9 @@ async def checkQuality(items, outputFileName):
             printResults(itemId, itemResults, outputFileName)
 
             if((index+1) % 10 == 0):
-                print('|', end='', flush=True)
+                displayProgress(99, False)
                 if((index+1) % 100 == 0):
+                    # new line
                     print('',index+1)
         except Exception as ex:
             logError(ex)
