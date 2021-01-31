@@ -93,7 +93,7 @@ def printResults(itemId, itemResults, outputFileName):
 
 def logError(exception):
     with open('error.log', 'a') as outputFile:
-        print("Exception:", exception, file=outputFile)
+        print(exception, file=outputFile)
 
 def displayProgress(step, overwrite=True):
     character = ''
@@ -145,11 +145,28 @@ async def checkConstraints(itemId):
 
     async with ClientSession() as session:
         async with session.get(CONSTRAINT_CHECK_URL + '&id=' + itemId) as r:
+            if r.status != 200:
+                raise Exception(
+                    'wbcheckconstraint API returned status code ' +
+                    str(r.status) +
+                    ' for item ' +
+                    str(itemId)
+                )
+
             r = await r.read()
             parsed_response = json.loads(str(r, 'utf-8'))
+            if 'error' in parsed_response:
+                raise Exception(
+                    'wbcheckconstraint API returned error \'' +
+                    parsed_response['error']['code'] +
+                    '\' for item ' + str(itemId)
+                )
+
             claims = parsed_response['wbcheckconstraints'][itemId]['claims']
+
             # claims is a list (not a dict) if it's empty... yikes.
             if not type(claims) is dict:
+                # no statements -> no violations
                 return counter
 
             for (property_id, statement_group) in claims.items():
