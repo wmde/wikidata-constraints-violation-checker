@@ -24,8 +24,6 @@ EMPTY_RESULTS = {
     'wikipedia_sitelinks': -1,
     'ores_score': -1
 }
-# TODO
-violated_statements = 0
 
 def parseArguments(argv):
     numberOfItems = False
@@ -175,7 +173,6 @@ async def checkConstraints(itemId):
 
                     violated_mainsnaks = statement['mainsnak']['results']
                     for violated_mainsnak in violated_mainsnaks:
-                        # print("property_id, status:", property_id, main_result['status'])
                         counter = incrementCounter(violated_mainsnak['status'], counter)
 
                     if 'qualifiers' in statement.keys():
@@ -184,7 +181,6 @@ async def checkConstraints(itemId):
                             for qualifier_constraint_check in qualifier_item:
                                 qualifier_results = qualifier_constraint_check['results']
                                 for qualifier_result in qualifier_results:
-                                    # print("property_id, qualifier_property_id, status:", property_id, qualifier_property_id, qualifier_result['status'])
                                     counter = incrementCounter(qualifier_result['status'], counter)
 
                     if 'references' in statement.keys():
@@ -194,7 +190,6 @@ async def checkConstraints(itemId):
                                 for reference_constraint_check in reference_constraint_checks:
                                     reference_results = reference_constraint_check['results']
                                     for reference_result in reference_results:
-                                        # print("property_id, snak_property_id, status:", property_id, snak_property_id, reference_result['status'])
                                         counter = incrementCounter(reference_result['status'], counter)
             return counter
 
@@ -255,7 +250,7 @@ async def checkQuality(items, outputFileName):
                 displayProgress(99, False)
                 if((index+1) % 100 == 0):
                     # new line
-                    print('',index+1)
+                    print('', index+1)
         except Exception as ex:
             logError(ex)
             continue
