@@ -14,6 +14,16 @@ OUTPUT_DELIMITER = ';'
 STATEMENT_COUNT_URL = 'https://www.wikidata.org/w/api.php?action=query&prop=pageprops&ppprop=wb-claims&format=json'
 CONSTRAINT_CHECK_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wbcheckconstraints'
 
+EMPTY_RESULTS = {
+    'statements': -1,
+    'violations_mandatory': -1,
+    'violations_normal': -1,
+    'violations_suggestion': -1,
+    'violated_statements': -1,
+    'total_sitelinks': -1,
+    'wikipedia_sitelinks': -1,
+    'ores_score': -1
+}
 # TODO
 violated_statements = 0
 
@@ -68,20 +78,25 @@ def printHeader(outputFileName):
             'violated_statements'
         ]), file=outputFile)
 
-def printResults(q_id, statementCount, constraintChecks, outputFileName):
+def printResults(itemId, itemResults, outputFileName):
     with open(outputFileName, 'a') as outputFile:
-        # list of str-mapped int values, delimited by OUTPUT_DELIMITER
+        # list of str-mapped values, delimited by OUTPUT_DELIMITER
         print(OUTPUT_DELIMITER.join(map(str, [
-            q_id,
-            statementCount,
-            constraintChecks['violations'],
-            constraintChecks['warnings'],
-            constraintChecks['suggestions'],
-            constraintChecks['violated_statements']
+            itemId,
+            itemResults['statements'],
+            itemResults['violations_mandatory'],
+            itemResults['violations_normal'],
+            itemResults['violations_suggestion'],
+            itemResults['violated_statements']
             ]
         )), file=outputFile)
 
-async def countStatements(q_id):
+def logError(exception):
+    with open('error.log', 'a') as outputFile:
+        print("Exception:", exception, file=outputFile)
+
+
+async def fetchNumberOfStatements(q_id):
     # Returns the number of statements on the given entity, returns False if the
     # entity does not exist or is a redirect.
     async with ClientSession() as session:
@@ -93,7 +108,7 @@ async def countStatements(q_id):
             try:
                 statementCount = pages[firstPageId]['pageprops']['wb-claims']
             except KeyError:
-                return False
+                raise Exception('Item ' + q_id + " does not exist or is a redirect.")
             return statementCount
 
 async def checkConstraints(q_id):
@@ -162,24 +177,49 @@ def incrementCounter(status, counter):
 
     return counter
 
+async def countStatements(itemId, results):
+    print('.', end='', flush=True)
+    try:
+        results['statements'] = await fetchNumberOfStatements(itemId)
+        print('\b-', end='', flush=True)
+    except Exception as ex:
+        print('\bx', end='', flush=True)
+        raise ex
+
+    return results
+
+async def checkConstraintViolations(itemId, results):
+    try:
+        constraintViolations = await checkConstraints(itemId)
+        results['violations_mandatory'] = constraintViolations['violations']
+        results['violations_normal'] = constraintViolations['warnings']
+        results['violations_suggestion'] = constraintViolations['suggestions']
+        results['violated_statements'] = constraintViolations['violated_statements']
+        print('\b+', end='', flush=True)
+    except Exception as ex:
+        print('\bX', end='', flush=True)
+        raise Exception(ex)
+
+    return results
+
 async def checkQuality(items, outputFileName):
     printHeader(outputFileName)
 
     for index, q_id in enumerate(items):
-        print('.', end='', flush=True)
-        statementCount = await countStatements(q_id)
-        print('\b-', end='', flush=True)
-        if statementCount is False:
-            print('\bx', end='', flush=True)
-            continue
-        constraintChecks = await checkConstraints(q_id)
-        print('\b+', end='', flush=True)
-        printResults(q_id, statementCount, constraintChecks, outputFileName)
 
-        if((index+1) % 10 == 0):
-            print('|', end='', flush=True)
-            if((index+1) % 100 == 0):
-                print('',index+1)
+        itemResults = EMPTY_RESULTS
+        try:
+            itemResults = await countStatements(q_id, itemResults)
+            itemResults = await checkConstraintViolations(q_id, itemResults)
+            printResults(q_id, itemResults, outputFileName)
+
+            if((index+1) % 10 == 0):
+                print('|', end='', flush=True)
+                if((index+1) % 100 == 0):
+                    print('',index+1)
+        except Exception as ex:
+            logError(ex)
+            continue
 
 async def main(argv):
     numberOfItems, outputFileName, inputFileName= parseArguments(argv)
