@@ -96,11 +96,11 @@ def logError(exception):
         print("Exception:", exception, file=outputFile)
 
 
-async def fetchNumberOfStatements(q_id):
+async def fetchNumberOfStatements(itemId):
     # Returns the number of statements on the given entity, returns False if the
     # entity does not exist or is a redirect.
     async with ClientSession() as session:
-        async with session.get(STATEMENT_COUNT_URL + '&titles=' + q_id) as statementCountResponse:
+        async with session.get(STATEMENT_COUNT_URL + '&titles=' + itemId) as statementCountResponse:
             statementCountResponse = await statementCountResponse.read()
             r = json.loads(str(statementCountResponse, 'utf-8'))
             pages = r['query']['pages']
@@ -108,10 +108,10 @@ async def fetchNumberOfStatements(q_id):
             try:
                 statementCount = pages[firstPageId]['pageprops']['wb-claims']
             except KeyError:
-                raise Exception('Item ' + q_id + " does not exist or is a redirect.")
+                raise Exception('Item ' + itemId + " does not exist or is a redirect.")
             return statementCount
 
-async def checkConstraints(q_id):
+async def checkConstraints(itemId):
     counter = {
         'violations': 0,
         'warnings': 0,
@@ -121,10 +121,10 @@ async def checkConstraints(q_id):
     }
 
     async with ClientSession() as session:
-        async with session.get(CONSTRAINT_CHECK_URL + '&id=' + q_id) as r:
+        async with session.get(CONSTRAINT_CHECK_URL + '&id=' + itemId) as r:
             r = await r.read()
             parsed_response = json.loads(str(r, 'utf-8'))
-            claims = parsed_response['wbcheckconstraints'][q_id]['claims']
+            claims = parsed_response['wbcheckconstraints'][itemId]['claims']
             # claims is a list (not a dict) if it's empty... yikes.
             if not type(claims) is dict:
                 return counter
@@ -205,13 +205,13 @@ async def checkConstraintViolations(itemId, results):
 async def checkQuality(items, outputFileName):
     printHeader(outputFileName)
 
-    for index, q_id in enumerate(items):
+    for index, itemId in enumerate(items):
 
         itemResults = EMPTY_RESULTS
         try:
-            itemResults = await countStatements(q_id, itemResults)
-            itemResults = await checkConstraintViolations(q_id, itemResults)
-            printResults(q_id, itemResults, outputFileName)
+            itemResults = await countStatements(itemId, itemResults)
+            itemResults = await checkConstraintViolations(itemId, itemResults)
+            printResults(itemId, itemResults, outputFileName)
 
             if((index+1) % 10 == 0):
                 print('|', end='', flush=True)
