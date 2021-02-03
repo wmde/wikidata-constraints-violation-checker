@@ -9,7 +9,9 @@ import csv
 import json
 from datetime import datetime
 import random
+import numpy
 
+CHUNK_SIZE = 50
 OUTPUT_DELIMITER = ';'
 STATEMENT_COUNT_URL = 'https://www.wikidata.org/w/api.php?action=query&prop=pageprops&ppprop=wb-claims&format=json'
 CONSTRAINT_CHECK_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wbcheckconstraints'
@@ -58,12 +60,35 @@ def parseArguments(argv):
 
     return numberOfItems, outputFileName, inputFileName
 
-def readItemsFromFile(inputFileName):
-    with open(inputFileName, newline='') as inputFile:
-        return [row[0] for row in csv.reader(inputFile)]
+def generateRandomItemIds(numberofItems):
+    items = []
+    for i in range(numberofItems):
+        randomId = 'Q' + str(random.randint(1, 100000000))
+        items.append(randomId)
 
-def generateRandomItemIds(numberOfItems):
-    return ['Q' + str(random.randint(1, 100000000)) for _ in range(numberOfItems)]
+    return items
+
+# generator to create batches of random Q-IDs,
+# then fetch the number of statements for them from the query API
+async def queryRandomItems(numberOfItems):
+    counter = 0
+    while counter < numberOfItems:
+        batchOfIds = generateRandomItemIds(min(CHUNK_SIZE, numberOfItems - counter))
+        batchOfResults = await fetchNumberOfStatements(batchOfIds)
+        counter += len(batchOfResults)
+        yield batchOfResults
+
+# generator to read batches of Q-IDs from a file,
+# then fetch the number of statements for them from the query API
+async def queryItemsFromFile(inputFileName):
+    with open(inputFileName, newline='') as inputFile:
+        lines = [row[0] for row in csv.reader(inputFile)]
+
+    numberOfBatches = (len(lines) // CHUNK_SIZE) + 1
+    batches = numpy.array_split(lines, numberOfBatches)
+    for batchOfIds in batches:
+        batchOfResults = await fetchNumberOfStatements(batchOfIds)
+        yield batchOfResults
 
 def printHeader(outputFileName):
     with open(outputFileName, 'w') as outputFile:
@@ -89,9 +114,13 @@ def printResults(itemId, itemResults, outputFileName):
             ]
         )), file=outputFile)
 
-def logError(exception):
+def logException(exception):
     with open('error.log', 'a') as outputFile:
         print(exception, file=outputFile)
+
+def logErrorMessage(message):
+    with open('error.log', 'a') as outputFile:
+        print(message, file=outputFile)
 
 def displayProgress(step, overwrite=True):
     character = ''
@@ -117,20 +146,26 @@ def displayProgress(step, overwrite=True):
 
     print(character, end='', flush=True)
 
-async def fetchNumberOfStatements(itemId):
+async def fetchNumberOfStatements(itemIds):
     # Returns the number of statements on the given entity, returns False if the
     # entity does not exist or is a redirect.
+    batchOfResults = []
     async with ClientSession() as session:
-        async with session.get(STATEMENT_COUNT_URL + '&titles=' + itemId) as statementCountResponse:
+        async with session.get(STATEMENT_COUNT_URL + '&titles=' + '|'.join(itemIds)) as statementCountResponse:
             statementCountResponse = await statementCountResponse.read()
             r = json.loads(str(statementCountResponse, 'utf-8'))
-            pages = r['query']['pages']
-            firstPageId = next(iter(pages))
-            try:
-                statementCount = pages[firstPageId]['pageprops']['wb-claims']
-            except KeyError:
-                raise Exception('Item ' + itemId + " does not exist or is a redirect.")
-            return statementCount
+
+    for page in r['query']['pages'].values():
+        if not 'pageprops' in page:
+            logErrorMessage("Item " + page['title'] + ' does not exist or is a redirect.')
+            continue
+
+        results = EMPTY_RESULTS.copy()
+        results['itemId'] = page['title']
+        results['statements'] = page['pageprops']['wb-claims']
+        batchOfResults.append(results)
+
+    return batchOfResults
 
 async def checkConstraints(itemId):
     counter = {
@@ -211,18 +246,8 @@ def incrementCounter(status, counter):
 
     return counter
 
-async def countStatements(itemId, results):
-    displayProgress(0, False)
-    try:
-        results['statements'] = await fetchNumberOfStatements(itemId)
-        displayProgress(1)
-    except Exception as ex:
-        displayProgress(-1)
-        raise ex
-
-    return results
-
 async def checkConstraintViolations(itemId, results):
+    displayProgress(0, False)
     try:
         constraintViolations = await checkConstraints(itemId)
         results['violations_mandatory'] = constraintViolations['violations']
@@ -236,34 +261,40 @@ async def checkConstraintViolations(itemId, results):
 
     return results
 
-async def checkQuality(items, outputFileName):
-    printHeader(outputFileName)
-
-    for index, itemId in enumerate(items):
-        itemResults = EMPTY_RESULTS
+async def checkQuality(batchOfItems, outputFileName):
+    index = 0
+    for index, item in enumerate(batchOfItems):
+        itemId = item['itemId']
         try:
-            itemResults = await countStatements(itemId, itemResults)
-            itemResults = await checkConstraintViolations(itemId, itemResults)
+            itemResults = await checkConstraintViolations(itemId, item)
             printResults(itemId, itemResults, outputFileName)
 
             if((index+1) % 10 == 0):
                 displayProgress(99, False)
-                if((index+1) % 100 == 0):
-                    # new line
-                    print('', index+1)
+
         except Exception as ex:
-            logError(ex)
+            logException(ex)
             continue
+
+    return index+1
 
 async def main(argv):
     numberOfItems, outputFileName, inputFileName= parseArguments(argv)
 
-    if(numberOfItems):
-        items = generateRandomItemIds(int(numberOfItems))
-    else:
-        items = readItemsFromFile(inputFileName)
+    printHeader(outputFileName)
 
-    await checkQuality(items, outputFileName)
+    if(numberOfItems):
+        # we use randomly generated Q-IDs
+        batchesOfItems = queryRandomItems(int(numberOfItems))
+    else:
+        # we read the Q-IDs from a file
+        batchesOfItems = queryItemsFromFile(inputFileName)
+
+    totalItemsChecked = 0
+    async for batch in batchesOfItems:
+        itemsChecked = await checkQuality(batch, outputFileName)
+        totalItemsChecked += itemsChecked
+        print('', totalItemsChecked)
 
     print()
 
