@@ -14,18 +14,8 @@ import numpy
 CHUNK_SIZE = 50
 OUTPUT_DELIMITER = ';'
 STATEMENT_COUNT_URL = 'https://www.wikidata.org/w/api.php?action=query&prop=pageprops&ppprop=wb-claims&format=json'
+SITELINK_COUNT_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wbgetentities&props=sitelinks'
 CONSTRAINT_CHECK_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wbcheckconstraints'
-
-EMPTY_RESULTS = {
-    'statements': -1,
-    'violations_mandatory': -1,
-    'violations_normal': -1,
-    'violations_suggestion': -1,
-    'violated_statements': -1,
-    'total_sitelinks': -1,
-    'wikipedia_sitelinks': -1,
-    'ores_score': -1
-}
 
 def parseArguments(argv):
     numberOfItems = False
@@ -98,7 +88,9 @@ def printHeader(outputFileName):
             'violations_mandatory_level',
             'violations_normal_level',
             'violations_suggestion_level',
-            'violated_statements'
+            'violated_statements',
+            'total_sitelinks',
+            'wikipedia_sitelinks'
         ]), file=outputFile)
 
 def printResults(itemId, itemResults, outputFileName):
@@ -110,8 +102,10 @@ def printResults(itemId, itemResults, outputFileName):
             itemResults['violations_mandatory'],
             itemResults['violations_normal'],
             itemResults['violations_suggestion'],
-            itemResults['violated_statements']
-            ]
+            itemResults['violated_statements'],
+            itemResults['total_sitelinks'],
+            itemResults['wikipedia_sitelinks']
+        ]
         )), file=outputFile)
 
 def logException(exception):
@@ -147,9 +141,8 @@ def displayProgress(step, overwrite=True):
     print(character, end='', flush=True)
 
 async def fetchNumberOfStatements(itemIds):
-    # Returns the number of statements on the given entity, returns False if the
-    # entity does not exist or is a redirect.
-    batchOfResults = []
+    # Returns a dictionary of items, each with their the number of statements
+    batchOfResults = {}
     async with ClientSession() as session:
         async with session.get(STATEMENT_COUNT_URL + '&titles=' + '|'.join(itemIds)) as statementCountResponse:
             statementCountResponse = await statementCountResponse.read()
@@ -160,11 +153,30 @@ async def fetchNumberOfStatements(itemIds):
             logErrorMessage("Item " + page['title'] + ' does not exist or is a redirect.')
             continue
 
-        results = EMPTY_RESULTS.copy()
-        results['itemId'] = page['title']
-        results['statements'] = page['pageprops']['wb-claims']
-        batchOfResults.append(results)
+        # add number of statements to the item's results dictionary in batchOfResults
+        results = { 'statements': page['pageprops']['wb-claims'] }
+        batchOfResults.update({page['title']: results})
 
+    return batchOfResults
+
+async def fetchNumberOfSitelinks(batchOfResults):
+    # Gets a dictionary of itemIds and their statement count results
+    # and adds to it the total number of sitelinks and the number of wikipedia sitelinks per itemId
+    async with ClientSession() as session:
+        async with session.get(SITELINK_COUNT_URL + '&ids=' + '|'.join(batchOfResults.keys())) as sitelinksResponse:
+            sitelinksResponse = await sitelinksResponse.read()
+            r = json.loads(str(sitelinksResponse, 'utf-8'))
+
+    if not 'entities' in r:
+        raise Exception("could not find sitelinks for items", batchOfResults.keys())
+
+    for itemId, item in r['entities'].items():
+        total_sitelinks = item['sitelinks']
+        wikipedia_sitelinks = { k: v for k, v in total_sitelinks.items()
+            if k.endswith('wiki') and not k in ['commonswiki', 'specieswiki'] }
+        # add total and wikipedia sitelinks to the item's results dictionary in batchOfItems
+        results = {'total_sitelinks': len(total_sitelinks), 'wikipedia_sitelinks': len(wikipedia_sitelinks)}
+        batchOfResults[itemId].update(results)
     return batchOfResults
 
 async def checkConstraints(itemId):
@@ -262,21 +274,20 @@ async def checkConstraintViolations(itemId, results):
     return results
 
 async def checkQuality(batchOfItems, outputFileName):
-    index = 0
-    for index, item in enumerate(batchOfItems):
-        itemId = item['itemId']
+    checksFailed = 0
+    for index, (itemId, itemResults) in enumerate(batchOfItems.items()):
+        if(index % 10 == 0):
+            displayProgress(99, False)
+
         try:
-            itemResults = await checkConstraintViolations(itemId, item)
+            itemResults = await checkConstraintViolations(itemId, itemResults)
             printResults(itemId, itemResults, outputFileName)
-
-            if((index+1) % 10 == 0):
-                displayProgress(99, False)
-
         except Exception as ex:
+            checksFailed += 1
             logException(ex)
             continue
 
-    return index+1
+    return len(batchOfItems) - checksFailed
 
 async def main(argv):
     numberOfItems, outputFileName, inputFileName= parseArguments(argv)
@@ -292,8 +303,9 @@ async def main(argv):
 
     totalItemsChecked = 0
     async for batch in batchesOfItems:
-        itemsChecked = await checkQuality(batch, outputFileName)
-        totalItemsChecked += itemsChecked
+        itemsWithSitelinks = await fetchNumberOfSitelinks(batch)
+        itemsWithConstraintChecks = await checkQuality(itemsWithSitelinks, outputFileName)
+        totalItemsChecked += itemsWithConstraintChecks
         print('', totalItemsChecked)
 
     print()
