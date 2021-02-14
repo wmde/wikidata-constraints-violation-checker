@@ -11,7 +11,7 @@ from datetime import datetime
 import random
 import numpy
 
-CHUNK_SIZE = 50
+CHUNK_SIZE = 10
 OUTPUT_DELIMITER = ';'
 STATEMENT_COUNT_URL = 'https://www.wikidata.org/w/api.php?action=query&prop=pageprops&ppprop=wb-claims&format=json'
 SITELINK_COUNT_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wbgetentities&props=sitelinks'
@@ -93,20 +93,21 @@ def printHeader(outputFileName):
             'wikipedia_sitelinks'
         ]), file=outputFile)
 
-def printResults(itemId, itemResults, outputFileName):
+def printResults(batchOfResults, outputFileName):
     with open(outputFileName, 'a') as outputFile:
-        # list of str-mapped values, delimited by OUTPUT_DELIMITER
-        print(OUTPUT_DELIMITER.join(map(str, [
-            itemId,
-            itemResults['statements'],
-            itemResults['violations_mandatory'],
-            itemResults['violations_normal'],
-            itemResults['violations_suggestion'],
-            itemResults['violated_statements'],
-            itemResults['total_sitelinks'],
-            itemResults['wikipedia_sitelinks']
-        ]
-        )), file=outputFile)
+        for itemId, itemResults in batchOfResults.items():
+            # list of str-mapped values, delimited by OUTPUT_DELIMITER
+            print(OUTPUT_DELIMITER.join(map(str, [
+                itemId,
+                itemResults['statements'],
+                itemResults['violations_mandatory'],
+                itemResults['violations_normal'],
+                itemResults['violations_suggestion'],
+                itemResults['violated_statements'],
+                itemResults['total_sitelinks'],
+                itemResults['wikipedia_sitelinks']
+            ]
+            )), file=outputFile)
 
 def logException(exception):
     with open('error.log', 'a') as outputFile:
@@ -179,115 +180,122 @@ async def fetchNumberOfSitelinks(batchOfResults):
         batchOfResults[itemId].update(results)
     return batchOfResults
 
-async def checkConstraints(itemId):
-    counter = {
-        'violations': 0,
-        'warnings': 0,
-        'suggestions': 0,
-        'violated_statements': 0,
-        'statement_is_violated': False
-    }
-
+async def checkConstraints(batchOfResults):
+    items = '|'.join(batchOfResults.keys())
     async with ClientSession() as session:
-        async with session.get(CONSTRAINT_CHECK_URL + '&id=' + itemId) as r:
+        async with session.get(CONSTRAINT_CHECK_URL + '&id=' + items) as r:
             if r.status != 200:
                 raise Exception(
                     'wbcheckconstraint API returned status code ' +
-                    str(r.status) +
-                    ' for item ' +
-                    str(itemId)
+                    str(r.status) + ' for items ' +  items
                 )
 
             r = await r.read()
-            parsed_response = json.loads(str(r, 'utf-8'))
-            if 'error' in parsed_response:
-                raise Exception(
-                    'wbcheckconstraint API returned error \'' +
-                    parsed_response['error']['code'] +
-                    '\' for item ' + str(itemId)
-                )
 
-            claims = parsed_response['wbcheckconstraints'][itemId]['claims']
+    jsonResponse = json.loads(str(r, 'utf-8'))
+    if 'error' in jsonResponse:
+        raise Exception(
+            'wbcheckconstraint API returned error \'' +
+            jsonResponse['error']['code'] +
+            '\' for items ' + items
+        )
+    for itemId in jsonResponse['wbcheckconstraints']:
+        itemCheck = jsonResponse['wbcheckconstraints'][itemId]
+        constraintCheckResults = parseItemCheck(itemCheck)
+        batchOfResults[itemId].update(constraintCheckResults)
 
-            # claims is a list (not a dict) if it's empty... yikes.
-            if not type(claims) is dict:
-                # no statements -> no violations
-                return counter
+    return batchOfResults
 
-            for (property_id, statement_group) in claims.items():
-                for statement in statement_group:
-                    counter['statement_is_violated'] = False
+def parseItemCheck(jsonConstraintCheckResponse):
+    results = {
+        'violations_mandatory': 0,
+        'violations_normal': 0,
+        'violations_suggestion': 0,
+        'violated_statements': 0,
+        'statement_is_violated': False
+    }
+    claims = jsonConstraintCheckResponse['claims']
 
-                    violated_mainsnaks = statement['mainsnak']['results']
-                    for violated_mainsnak in violated_mainsnaks:
-                        counter = incrementCounter(violated_mainsnak['status'], counter)
+    # claims is a list (not a dict) if it's empty... yikes.
+    if not type(claims) is dict:
+        # no statements -> no violations
+        return results
 
-                    if 'qualifiers' in statement.keys():
-                        qualifier_items = statement['qualifiers'].items()
-                        for (qualifier_property_id, qualifier_item) in qualifier_items:
-                            for qualifier_constraint_check in qualifier_item:
-                                qualifier_results = qualifier_constraint_check['results']
-                                for qualifier_result in qualifier_results:
-                                    counter = incrementCounter(qualifier_result['status'], counter)
+    for (property_id, statement_group) in claims.items():
+        for statement in statement_group:
+            results['statement_is_violated'] = False
 
-                    if 'references' in statement.keys():
-                        reference_items = statement['references']
-                        for reference_item in reference_items:
-                            for (snak_property_id, reference_constraint_checks) in reference_item['snaks'].items():
-                                for reference_constraint_check in reference_constraint_checks:
-                                    reference_results = reference_constraint_check['results']
-                                    for reference_result in reference_results:
-                                        counter = incrementCounter(reference_result['status'], counter)
-            return counter
+            violated_mainsnaks = statement['mainsnak']['results']
+            for violated_mainsnak in violated_mainsnaks:
+                results = countResults(violated_mainsnak['status'], results)
 
-def incrementCounter(status, counter):
+            if 'qualifiers' in statement.keys():
+                qualifier_items = statement['qualifiers'].items()
+                for (qualifier_property_id, qualifier_item) in qualifier_items:
+                    for qualifier_constraint_check in qualifier_item:
+                        qualifier_results = qualifier_constraint_check['results']
+                        for qualifier_result in qualifier_results:
+                            results = countResults(qualifier_result['status'], results)
+
+            if 'references' in statement.keys():
+                reference_items = statement['references']
+                for reference_item in reference_items:
+                    for (snak_property_id, reference_constraint_checks) in reference_item['snaks'].items():
+                        for reference_constraint_check in reference_constraint_checks:
+                            reference_results = reference_constraint_check['results']
+                            for reference_result in reference_results:
+                                results = countResults(reference_result['status'], results)
+
+    del results['statement_is_violated']
+    return results
+
+def countResults(status, results):
     # ignore
     if status == 'bad-parameters':
-        return counter
+        return results
 
     if status == 'violation':
-        counter['violations'] += 1
+        results['violations_mandatory'] += 1
     elif status == 'warning':
-        counter['warnings'] += 1
+        results['violations_normal'] += 1
     elif status == 'suggestion':
-        counter['suggestions'] += 1
+        results['violations_suggestion'] += 1
 
-    if counter['statement_is_violated'] == False:
-        counter['statement_is_violated'] = True
-        counter['violated_statements'] += 1
-
-    return counter
-
-async def checkConstraintViolations(itemId, results):
-    displayProgress(0, False)
-    try:
-        constraintViolations = await checkConstraints(itemId)
-        results['violations_mandatory'] = constraintViolations['violations']
-        results['violations_normal'] = constraintViolations['warnings']
-        results['violations_suggestion'] = constraintViolations['suggestions']
-        results['violated_statements'] = constraintViolations['violated_statements']
-        displayProgress(2)
-    except Exception as ex:
-        displayProgress(-2)
-        raise Exception(ex)
+    if results['statement_is_violated'] == False:
+        results['statement_is_violated'] = True
+        results['violated_statements'] += 1
 
     return results
 
-async def checkQuality(batchOfItems, outputFileName):
+async def checkQualityByBatch(batchOfItems, outputFileName):
     checksFailed = 0
-    for index, (itemId, itemResults) in enumerate(batchOfItems.items()):
-        if(index % 10 == 0):
-            displayProgress(99, False)
+    try:
+        batchOfResults = await checkConstraints(batchOfItems)
+        printResults(batchOfResults, outputFileName)
+    except Exception as ex:
+        logErrorMessage("failed to check quality constraints on items " +
+                        '|'.join(batchOfItems.keys()))
+        logErrorMessage("now checking them one-by-one")
+        logException(ex)
+        for itemId, itemResults in batchOfItems.items():
+            itemChecked = await checkQualityByItem(itemId, itemResults, outputFileName)
+            if(not itemChecked):
+                checksFailed += 1
 
-        try:
-            itemResults = await checkConstraintViolations(itemId, itemResults)
-            printResults(itemId, itemResults, outputFileName)
-        except Exception as ex:
-            checksFailed += 1
-            logException(ex)
-            continue
 
     return len(batchOfItems) - checksFailed
+
+async def checkQualityByItem(itemId, itemResults, outputFileName):
+    try:
+        itemResults = await checkConstraints({itemId: itemResults})
+    except Exception as ex:
+        logErrorMessage("failed to check quality constraints on item " + itemId)
+        logException(ex)
+        return False
+
+    printResults(itemResults, outputFileName)
+
+    return True
 
 async def main(argv):
     numberOfItems, outputFileName, inputFileName= parseArguments(argv)
@@ -304,7 +312,7 @@ async def main(argv):
     totalItemsChecked = 0
     async for batch in batchesOfItems:
         itemsWithSitelinks = await fetchNumberOfSitelinks(batch)
-        itemsWithConstraintChecks = await checkQuality(itemsWithSitelinks, outputFileName)
+        itemsWithConstraintChecks = await checkQualityByBatch(itemsWithSitelinks, outputFileName)
         totalItemsChecked += itemsWithConstraintChecks
         print('', totalItemsChecked)
 
