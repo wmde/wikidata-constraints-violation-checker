@@ -11,44 +11,61 @@ from datetime import datetime
 import random
 import numpy
 
-CHUNK_SIZE = 10
 OUTPUT_DELIMITER = ';'
 STATEMENT_COUNT_URL = 'https://www.wikidata.org/w/api.php?action=query&prop=pageprops&ppprop=wb-claims&format=json'
 SITELINK_COUNT_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wbgetentities&props=sitelinks'
 CONSTRAINT_CHECK_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wbcheckconstraints'
 
+batchSize = 10
+
+def usage(exitCode = False):
+    print('checkConstraints.py -i <inputfile> | -r <number of items> [-o <outputfile> -b <batch-size>]')
+    if(exitCode):
+        sys.exit(exitCode)
+
+
 def parseArguments(argv):
-    numberOfItems = False
+    global batchSize
+    numberOfRandomItems = False
     outputFileName = ''
     inputFileName = ''
 
+    startMessage = ''
+
     try:
-        opts, args = getopt.getopt(argv,"hi:o:r:",["help","ifile=","ofile=","random="])
+        opts, args = getopt.getopt(argv,"hi:o:r:b:",["help","ifile=","ofile=","random=","batch-size="])
     except getopt.GetoptError:
-        print('checkConstraints.py -i <inputfile> | -r <number of items> [-o <outputfile>]')
-        sys.exit(2)
+        usage(2)
     for opt, arg in opts:
         if opt in ("-h", "--help"):
-            print('checkConstraints.py -i <inputfile> | -r <number of items> [-o <outputfile>]')
-            sys.exit()
+            usage(0)
         elif opt in ("-i", "--ifile"):
             inputFileName = arg
         elif opt in ("-o", "--ofile"):
             outputFileName = arg
+            startMessage += ', write to ' + outputFileName
         elif opt in ("-r", "--random"):
-            numberOfItems = arg
+            numberOfRandomItems = arg
+        elif opt in ("-b", "--batch-size"):
+            batchSize = int(arg)
 
-    if(not (inputFileName or numberOfItems) or (inputFileName and numberOfItems)):
-        print('checkConstraints.py -i <inputfile> | -r <number of items> [-o <outputfile>]')
-        sys.exit(2)
+    if(not (inputFileName or numberOfRandomItems) or (inputFileName and numberOfRandomItems)):
+        usage(2)
 
     if (not inputFileName and not outputFileName):
         outputFileName = "./random-" + datetime.now().strftime("%Y-%m-%d_%H:%M:%S") + ".out.csv"
+        startMessage = 'checking quality on ' + str(numberOfRandomItems) + ' random items' +\
+                       ', write to ' + outputFileName
     if(not outputFileName):
         name, extension = os.path.splitext(inputFileName)
         outputFileName = name + ".out" + extension
+        startMessage = 'checking quality on items from input file ' + inputFileName +\
+                       ', write to ' + outputFileName
 
-    return numberOfItems, outputFileName, inputFileName
+    startMessage += ', processing in batches of ' + str(batchSize)
+
+    print(startMessage)
+    return numberOfRandomItems, outputFileName, inputFileName
 
 def generateRandomItemIds(numberofItems):
     items = []
@@ -63,7 +80,7 @@ def generateRandomItemIds(numberofItems):
 async def queryRandomItems(numberOfItems):
     counter = 0
     while counter < numberOfItems:
-        batchOfIds = generateRandomItemIds(min(CHUNK_SIZE, numberOfItems - counter))
+        batchOfIds = generateRandomItemIds(min(batchSize, numberOfItems - counter))
         batchOfResults = await fetchNumberOfStatements(batchOfIds)
         counter += len(batchOfResults)
         yield batchOfResults
@@ -74,7 +91,7 @@ async def queryItemsFromFile(inputFileName):
     with open(inputFileName, newline='') as inputFile:
         lines = [row[0] for row in csv.reader(inputFile)]
 
-    numberOfBatches = (len(lines) // CHUNK_SIZE) + 1
+    numberOfBatches = (len(lines) // batchSize) + 1
     batches = numpy.array_split(lines, numberOfBatches)
     for batchOfIds in batches:
         batchOfResults = await fetchNumberOfStatements(batchOfIds)
