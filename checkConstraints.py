@@ -113,6 +113,9 @@ def printHeader(outputFileName):
 def printResults(batchOfResults, outputFileName):
     with open(outputFileName, 'a') as outputFile:
         for itemId, itemResults in batchOfResults.items():
+            if('failed' in itemResults.keys()):
+                continue
+
             # list of str-mapped values, delimited by OUTPUT_DELIMITER
             print(OUTPUT_DELIMITER.join(map(str, [
                 itemId,
@@ -204,7 +207,7 @@ async def checkConstraints(batchOfResults):
             if r.status != 200:
                 raise Exception(
                     'wbcheckconstraint API returned status code ' +
-                    str(r.status) + ' for items ' +  items
+                    str(r.status) + ' for item(s) ' +  items
                 )
 
             r = await r.read()
@@ -284,35 +287,29 @@ def countResults(status, results):
 
     return results
 
-async def checkQualityByBatch(batchOfItems, outputFileName):
-    checksFailed = 0
+async def checkQualityByBatch(batchOfItems):
     try:
-        batchOfResults = await checkConstraints(batchOfItems)
-        printResults(batchOfResults, outputFileName)
+        batchOfItems = await checkConstraints(batchOfItems)
     except Exception as ex:
         logErrorMessage("failed to check quality constraints on items " +
                         '|'.join(batchOfItems.keys()))
         logErrorMessage("now checking them one-by-one")
         logException(ex)
         for itemId, itemResults in batchOfItems.items():
-            itemChecked = await checkQualityByItem(itemId, itemResults, outputFileName)
-            if(not itemChecked):
-                checksFailed += 1
+            checkedItemResults = await checkQualityByItem(itemId, itemResults)
+            batchOfItems[itemId].update(checkedItemResults)
 
+    return batchOfItems
 
-    return len(batchOfItems) - checksFailed
-
-async def checkQualityByItem(itemId, itemResults, outputFileName):
+async def checkQualityByItem(itemId, itemResults):
     try:
         itemResults = await checkConstraints({itemId: itemResults})
     except Exception as ex:
         logErrorMessage("failed to check quality constraints on item " + itemId)
         logException(ex)
-        return False
+        return {'failed': True}
 
-    printResults(itemResults, outputFileName)
-
-    return True
+    return itemResults
 
 async def main(argv):
     numberOfItems, outputFileName, inputFileName= parseArguments(argv)
@@ -329,8 +326,9 @@ async def main(argv):
     totalItemsChecked = 0
     async for batch in batchesOfItems:
         itemsWithSitelinks = await fetchNumberOfSitelinks(batch)
-        itemsWithConstraintChecks = await checkQualityByBatch(itemsWithSitelinks, outputFileName)
-        totalItemsChecked += itemsWithConstraintChecks
+        itemsWithConstraintChecks = await checkQualityByBatch(itemsWithSitelinks)
+        totalItemsChecked += len(itemsWithConstraintChecks)
+        printResults(itemsWithConstraintChecks, outputFileName)
         print('', totalItemsChecked)
 
     print()
