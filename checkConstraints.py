@@ -12,7 +12,7 @@ import random
 import numpy
 
 OUTPUT_DELIMITER = ';'
-STATEMENT_COUNT_URL = 'https://www.wikidata.org/w/api.php?action=query&prop=pageprops&ppprop=wb-claims&format=json'
+STATEMENT_COUNT_URL = 'https://www.wikidata.org/w/api.php?format=json&action=query&prop=pageprops|revisions&ppprop=wb-claims&rvprop=ids'
 SITELINK_COUNT_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wbgetentities&props=sitelinks'
 CONSTRAINT_CHECK_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wbcheckconstraints'
 
@@ -174,8 +174,11 @@ async def fetchNumberOfStatements(itemIds):
             logErrorMessage("Item " + page['title'] + ' does not exist or is a redirect.')
             continue
 
-        # add number of statements to the item's results dictionary in batchOfResults
-        results = { 'statements': page['pageprops']['wb-claims'] }
+        # add revid and number of statements to the item's results dictionary in batchOfResults
+        results = {
+            'revid': page['revisions'][0]['revid'],
+            'statements': page['pageprops']['wb-claims'],
+        }
         batchOfResults.update({page['title']: results})
 
     return batchOfResults
