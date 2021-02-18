@@ -15,6 +15,7 @@ OUTPUT_DELIMITER = ';'
 STATEMENT_COUNT_URL = 'https://www.wikidata.org/w/api.php?format=json&action=query&prop=pageprops|revisions&ppprop=wb-claims&rvprop=ids'
 SITELINK_COUNT_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wbgetentities&props=sitelinks'
 CONSTRAINT_CHECK_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wbcheckconstraints'
+ORES_URL = 'https://ores.wikimedia.org/v3/scores/wikidatawiki?revids='
 
 batchSize = 10
 
@@ -107,7 +108,8 @@ def printHeader(outputFileName):
             'violations_suggestion_level',
             'violated_statements',
             'total_sitelinks',
-            'wikipedia_sitelinks'
+            'wikipedia_sitelinks',
+            'ores_score'
         ]), file=outputFile)
 
 def printResults(batchOfResults, outputFileName):
@@ -125,7 +127,8 @@ def printResults(batchOfResults, outputFileName):
                 itemResults['violations_suggestion'],
                 itemResults['violated_statements'],
                 itemResults['total_sitelinks'],
-                itemResults['wikipedia_sitelinks']
+                itemResults['wikipedia_sitelinks'],
+                itemResults['ores_score'],
             ]
             )), file=outputFile)
 
@@ -314,6 +317,23 @@ async def checkQualityByItem(itemId, itemResults):
 
     return itemResults
 
+async def fetchOresScore(batchOfItems):
+    # collect Q-ids and revids from items dictionary
+    itemIds = {}
+    for itemId, results in batchOfItems.items():
+        itemIds[str(results['revid'])] = itemId
+
+    async with ClientSession() as session:
+        async with session.get(ORES_URL + '|'.join(itemIds.keys())) as oresResponse:
+            oresResponse = await oresResponse.read()
+    r = json.loads(str(oresResponse, 'utf-8'))
+    for revid, score in r['wikidatawiki']['scores'].items():
+        itemId = itemIds[revid]
+        predictionScore = score['itemquality']['score']['prediction']
+        batchOfItems[itemId].update({'ores_score': predictionScore})
+
+    return batchOfItems
+
 async def main(argv):
     numberOfItems, outputFileName, inputFileName= parseArguments(argv)
 
@@ -326,13 +346,12 @@ async def main(argv):
         # we read the Q-IDs from a file
         batchesOfItems = queryItemsFromFile(inputFileName)
 
-    totalItemsChecked = 0
     async for batch in batchesOfItems:
         itemsWithSitelinks = await fetchNumberOfSitelinks(batch)
         itemsWithConstraintChecks = await checkQualityByBatch(itemsWithSitelinks)
-        totalItemsChecked += len(itemsWithConstraintChecks)
-        printResults(itemsWithConstraintChecks, outputFileName)
-        print('', totalItemsChecked)
+        itemsWithOresScore = await fetchOresScore(itemsWithConstraintChecks)
+        printResults(itemsWithOresScore, outputFileName)
+        print('', len(itemsWithOresScore))
 
     print()
 
