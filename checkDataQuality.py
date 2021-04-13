@@ -16,6 +16,8 @@ STATEMENT_COUNT_URL = 'https://www.wikidata.org/w/api.php?format=json&action=que
 SITELINK_COUNT_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wbgetentities&props=sitelinks'
 CONSTRAINT_CHECK_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wbcheckconstraints'
 ORES_URL = 'https://ores.wikimedia.org/v3/scores/wikidatawiki?revids='
+
+# The ORES score is calculated by weight of the most relevant score, see ORES on https://www.wikidata.org/wiki/Wikidata:Item_quality#ORES
 ORES_WEIGHTS = {
     "E": 1,
     "D": 2,
@@ -23,7 +25,6 @@ ORES_WEIGHTS = {
     "B": 4,
     "A": 5
 }
-
 
 batchSize = 10
 
