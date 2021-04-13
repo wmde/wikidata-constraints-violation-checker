@@ -62,7 +62,7 @@ def parseArguments(argv):
         usage(2)
 
     if (not inputFileName and not outputFileName):
-        outputFileName = "./random-" + datetime.now().strftime("%Y-%m-%d_%H:%M:%S") + ".out.csv"
+        outputFileName = "random-" + datetime.now().strftime("%Y-%m-%d_%H:%M:%S") + ".out.csv"
         startMessage = 'checking quality on ' + str(numberOfRandomItems) + ' random items' +\
                        ', write to ' + outputFileName
     if(not outputFileName):
@@ -72,6 +72,11 @@ def parseArguments(argv):
                        ', write to ' + outputFileName
 
     startMessage += ', processing in batches of ' + str(batchSize)
+
+    if not os.path.exists('output'):
+        os.makedirs('output')
+
+    outputFileName = "./output/" + outputFileName
 
     print(startMessage)
     return numberOfRandomItems, outputFileName, inputFileName
