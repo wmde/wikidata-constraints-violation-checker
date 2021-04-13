@@ -20,7 +20,7 @@ ORES_URL = 'https://ores.wikimedia.org/v3/scores/wikidatawiki?revids='
 batchSize = 10
 
 def usage(exitCode = False):
-    print('checkConstraints.py -i <inputfile> | -r <number of items> [-o <outputfile> -b <batch-size>]')
+    print('checkDataQuality.py -i <inputfile> | -r <number of items> [-o <outputfile> -b <batch-size>]')
     if(exitCode):
         sys.exit(exitCode)
 
