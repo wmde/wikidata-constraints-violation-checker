@@ -327,6 +327,10 @@ async def fetchOresScore(batchOfItems):
         async with session.get(ORES_URL + '|'.join(itemIds.keys())) as oresResponse:
             oresResponse = await oresResponse.read()
     r = json.loads(str(oresResponse, 'utf-8'))
+    if not 'wikidatawiki' in r:
+        logErrorMessage("no ORES scores found for items " + '|'.join(itemIds.keys()))
+        return batchOfItems
+
     for revid, score in r['wikidatawiki']['scores'].items():
         itemId = itemIds[revid]
         predictionScore = score['itemquality']['score']['prediction']
