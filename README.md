@@ -43,12 +43,13 @@ The script can read CSV files or generate random Item IDs.
 
 Example input file, the first column will be used to query for constrains violations:
 
-|     |          |
-| :-: | -------- |
-| Q60 | New York |
-| Q64 | Berlin   |
-| Q70 | Bern     |
-| Q84 | London   |
+```csv
+Q60,New York
+Q64,Berlin
+Q70,Bern
+Q84,London
+Q90,Paris
+```
 
 ## Output Data
 
