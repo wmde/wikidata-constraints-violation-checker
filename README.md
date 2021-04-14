@@ -1,6 +1,6 @@
 # Wikidata Constraints Violation Checker
 
-This script...
+The Wikidata Constraints Violations Checker allows you to analyze the number of constraints violations on a list of Wikidata Items. This is useful to better understand which Items need improvements the most and to better understand the data quality of a specific area of Wikidata.
 
 ## Usage
 
@@ -31,9 +31,9 @@ python3 checkDataQuality.py -r <number of items> -b <batch-size>
 | Arg | Name                    | Description                                                                            |
 | :-: | ----------------------- | -------------------------------------------------------------------------------------- |
 | -i  | Input file              | The path to the file containing the input data                                         |
-| -r  | Randomly generate Items | The number of items to randomly generate                                               |
+| -r  | Randomly generate Items | The number of Items to randomly generate                                               |
 | -o  | Output file             | The path to the file for output                                                        |
-| -b  | Batch Size              | The list of items are broken down into batches for processing. <br>Default value is 10 |
+| -b  | Batch Size              | The list of Items are broken down into batches for processing. <br>Default value is 10 |
 
 ## Input Data
 
@@ -57,11 +57,11 @@ The following fields are provided in the output data for Items that are succesfu
 |            Field            | Description                                                                                                                    |
 | :-------------------------: | ------------------------------------------------------------------------------------------------------------------------------ |
 |             QID             | The unique Item identifier                                                                                                     |
-|         statements          | Total amount of statements                                                                                                     |
-| violations_mandatory_level  | # of voilations at a [mandatory level](https://www.wikidata.org/wiki/Wikidata:2020_report_on_Property_constraints#mandatory)   |
+|         statements          | Total amount of statements on the Item                                                                                         |
+| violations_mandatory_level  | # of violations at a [mandatory level](https://www.wikidata.org/wiki/Wikidata:2020_report_on_Property_constraints#mandatory)   |
 |   violations_normal_level   | # of violations at a [normal level](https://www.wikidata.org/wiki/Wikidata:2020_report_on_Property_constraints#normal)         |
 | violations_suggestion_level | # of violations at a [suggestion level](https://www.wikidata.org/wiki/Wikidata:2020_report_on_Property_constraints#suggestion) |
-|     violated_statements     | # of violated statements                                                                                                       |
-|       total_sitelinks       | Total count of site links on Item                                                                                              |
-|     wikipedia_sitelinks     | # of links to Wikipedia                                                                                                        |
+|     violated_statements     | # of statements with violations                                                                                                |
+|       total_sitelinks       | # of sitelinks on the Item                                                                                                     |
+|     wikipedia_sitelinks     | # of sitelinks to Wikipedia                                                                                                    |
 |         ores_score          | [ORES Item quality score](https://www.wikidata.org/wiki/Wikidata:Item_quality) <br>From 1 to 5 (lowest to highest)                                                 |
