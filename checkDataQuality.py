@@ -17,6 +17,15 @@ SITELINK_COUNT_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wbge
 CONSTRAINT_CHECK_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wbcheckconstraints'
 ORES_URL = 'https://ores.wikimedia.org/v3/scores/wikidatawiki?revids='
 
+# The ORES score is calculated by weight of the most relevant score, see ORES on https://www.wikidata.org/wiki/Wikidata:Item_quality#ORES
+ORES_WEIGHTS = {
+    "E": 1,
+    "D": 2,
+    "C": 3,
+    "B": 4,
+    "A": 5
+}
+
 batchSize = 10
 
 def usage(exitCode = False):
@@ -333,8 +342,12 @@ async def fetchOresScore(batchOfItems):
 
     for revid, score in r['wikidatawiki']['scores'].items():
         itemId = itemIds[revid]
-        predictionScore = score['itemquality']['score']['prediction']
-        batchOfItems[itemId].update({'ores_score': predictionScore})
+        probability = score['itemquality']['score']['probability']
+        weightedSum = 0
+        for x in probability:
+            if(probability[x]):
+                weightedSum += probability[x] * ORES_WEIGHTS[x]
+        batchOfItems[itemId].update({'ores_score': round(weightedSum, 2)})
 
     return batchOfItems
 
