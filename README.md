@@ -66,3 +66,7 @@ The following fields are provided in the output data for Items that are succesfu
 |       total_sitelinks       | # of sitelinks on the Item                                                                                                     |
 |     wikipedia_sitelinks     | # of sitelinks to Wikipedia                                                                                                    |
 |         ores_score          | [ORES Item quality score](https://www.wikidata.org/wiki/Wikidata:Item_quality) <br>From 1 to 5 (lowest to highest)                                                 |
+
+## Note
+
+Please be aware that some large Items are skipped during the analysis because the constraint check API times out for them.
