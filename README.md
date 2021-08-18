@@ -6,13 +6,13 @@ The Wikidata Constraints Violations Checker allows you to analyze the number of 
 
 This script requires Python3 to be installed.
 
-Clone the repository to your machine or [click here](https://github.com/wmde/wikidata-item-quality-evaluator/archive/refs/heads/main.zip) to download as a ZIP
+Clone the repository to your machine or [click here](https://github.com/wmde/wikidata-constraints-violation-checker/archive/refs/heads/main.zip) to download as a ZIP
 
-`git clone https://github.com/wmde/wikidata-item-quality-evaluator.git`
+`git clone https://github.com/wmde/wikidata-constraints-violation-checker.git`
 
 ### Running the script
 
-In your terminal, navigate to the folder where the script is installed. You may need to also install some dependencies using pip3. (pip3 install ...)
+In your terminal, navigate to the folder where the script is installed. You may need to also install some dependencies using pip3 (with `pip3 install […]`).
 
 ```bash
 # To run the script with an input file
