@@ -2,17 +2,16 @@
 
 The Wikidata Constraints Violations Checker allows you to analyze the number of constraints violations on a list of Wikidata Items. This is useful to better understand which Items need improvements the most and to better understand the data quality of a specific area of Wikidata.
 
+## Installation
+This script requires at least Python 3.6. In your terminal, run:
+
+```bash
+git clone https://github.com/wmde/wikidata-constraints-violation-checker.git
+cd wikidata-constraints-violation-checker
+pip3 install -r requirements.txt
+```
+
 ## Usage
-
-This script requires Python3 to be installed.
-
-Clone the repository to your machine or [click here](https://github.com/wmde/wikidata-constraints-violation-checker/archive/refs/heads/main.zip) to download as a ZIP
-
-`git clone https://github.com/wmde/wikidata-constraints-violation-checker.git`
-
-### Running the script
-
-In your terminal, navigate to the folder where the script is installed. You may need to also install some dependencies using pip3 (with `pip3 install […]`).
 
 ```bash
 # To run the script with an input file
