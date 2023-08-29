@@ -1,21 +1,23 @@
 #!/usr/bin/python3
 
-import sys
-import os
-import getopt
 import asyncio
-from aiohttp import ClientSession
 import csv
+import getopt
 import json
-from datetime import datetime
+import os
 import random
+import sys
+from datetime import datetime
+
 import numpy
+from aiohttp import ClientSession
+
+from liftwing import make_liftiwing_calls
 
 OUTPUT_DELIMITER = ';'
 STATEMENT_COUNT_URL = 'https://www.wikidata.org/w/api.php?format=json&action=query&prop=pageprops|revisions&ppprop=wb-claims&rvprop=ids'
 SITELINK_COUNT_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wbgetentities&props=sitelinks'
 CONSTRAINT_CHECK_URL = 'https://www.wikidata.org/w/api.php?format=json&action=wbcheckconstraints'
-ORES_URL = 'https://ores.wikimedia.org/v3/scores/wikidatawiki?revids='
 
 # The ORES score is calculated by weight of the most relevant score, see ORES on https://www.wikidata.org/wiki/Wikidata:Item_quality#ORES
 ORES_WEIGHTS = {
@@ -330,18 +332,16 @@ async def fetchOresScore(batchOfItems):
     # collect Q-ids and revids from items dictionary
     itemIds = {}
     for itemId, results in batchOfItems.items():
-        itemIds[str(results['revid'])] = itemId
+        itemIds[results['revid']] = itemId
 
-    async with ClientSession() as session:
-        async with session.get(ORES_URL + '|'.join(itemIds.keys())) as oresResponse:
-            oresResponse = await oresResponse.read()
-    r = json.loads(str(oresResponse, 'utf-8'))
+    r = await make_liftiwing_calls(wiki_id="wikidatawiki", models=["damaging", "goodfaith", "itemquality", "itemtopic"], rev_ids=list(itemIds.keys()))
+
     if not 'wikidatawiki' in r:
         logErrorMessage("no ORES scores found for items " + '|'.join(itemIds.keys()))
         return batchOfItems
 
     for revid, score in r['wikidatawiki']['scores'].items():
-        itemId = itemIds[revid]
+        itemId = itemIds[int(revid)]
         probability = score['itemquality']['score']['probability']
         weightedSum = 0
         for x in probability:
